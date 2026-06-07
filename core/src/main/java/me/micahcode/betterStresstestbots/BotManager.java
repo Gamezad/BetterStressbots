@@ -12,8 +12,25 @@ import java.util.List;
 
 public class BotManager {
 
+    public enum GroundMode {
+        NONE, WALK, FLY;
+
+        public static GroundMode fromString(String s) {
+            return switch (s.toLowerCase()) {
+                case "walk" -> WALK;
+                case "fly"  -> FLY;
+                default     -> NONE;
+            };
+        }
+
+        @Override
+        public String toString() {
+            return name().toLowerCase();
+        }
+    }
+
     // just to be safe
-    public static final int MAX_BOTS = 1000;
+    public static final int MAX_BOTS = 5000;
 
     private final StressTestPlugin plugin;
     private final List<IFakePlayer> bots = new ArrayList<>();
@@ -26,7 +43,7 @@ public class BotManager {
     private double radius = 500.0;
     private int targetCount = 0;
     private int spawnDelayTicks = 2;
-    private boolean groundMode = false;
+    private GroundMode groundMode = GroundMode.NONE; // default: stand still
 
     public BotManager(StressTestPlugin plugin) {
         this.plugin = plugin;
@@ -54,13 +71,27 @@ public class BotManager {
         bots.forEach(b -> b.setRadius(radius));
     }
 
-    public void setGroundMode(boolean groundMode) {
-        this.groundMode = groundMode;
-        bots.forEach(b -> b.setGroundMode(groundMode));
+    public void setGroundMode(GroundMode mode) {
+        this.groundMode = mode;
+        bots.forEach(b -> applyModeToBot(b, mode));
+    }
+
+    /** Passes the mode straight through to the bot's setMode(). */
+    private void applyModeToBot(IFakePlayer bot, GroundMode mode) {
+        bot.setMode(mode);
     }
 
     public void botsChat(String message) {
         bots.forEach(b -> b.sendChat(message));
+    }
+
+    /**
+     * Sends all bots toward the given location.
+     * Each bot navigates once; the tick loop keeps them walking until they arrive
+     * (or you can call stop/start to reset normal wandering).
+     */
+    public void gotoLocation(Location target) {
+        bots.forEach(b -> b.navigateTo(target));
     }
 
     public void start() {
@@ -87,12 +118,12 @@ public class BotManager {
             IFakePlayer bot = FakePlayerFactory.create(name, spawn, plugin.getLogger());
             bot.setSpeed(speed);
             bot.setRadius(radius);
-            bot.setGroundMode(groundMode);
+            applyModeToBot(bot, groundMode);
             bots.add(bot);
         }, 0L, spawnDelayTicks);
 
         plugin.getLogger().info("Spawning " + targetCount + " bots | speed=" + speed
-                + " | radius=" + radius + " | mode=" + (groundMode ? "walk" : "fly"));
+                + " | radius=" + radius + " | mode=" + groundMode);
     }
 
     public void stop() {
@@ -128,7 +159,12 @@ public class BotManager {
         return radius;
     }
 
-    public boolean isGroundMode() {
+    public GroundMode getGroundMode() {
         return groundMode;
+    }
+
+    /** Legacy boolean accessor kept for any NMS layer that still uses it. */
+    public boolean isGroundMode() {
+        return groundMode == GroundMode.WALK;
     }
 }

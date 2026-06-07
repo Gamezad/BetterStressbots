@@ -2,6 +2,7 @@ package me.micahcode.betterStresstestbots.nms;
 
 import com.mojang.authlib.GameProfile;
 import io.netty.channel.embedded.EmbeddedChannel;
+import me.micahcode.betterStresstestbots.BotManager;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.PacketFlow;
@@ -27,9 +28,14 @@ public class FakePlayerImpl implements IFakePlayer {
     private final double spawnX, spawnY, spawnZ;
     private double targetX, targetY, targetZ;
     private final Random random = new Random();
-    private double speed = 0.1;
+
+    private double speed  = 0.1;
     private double radius = 500.0;
-    private boolean groundMode = false;
+
+    private BotManager.GroundMode mode = BotManager.GroundMode.NONE;
+
+    /** When non-null the bot navigates to a fixed point instead of wandering. */
+    private Location gotoTarget = null;
 
     public FakePlayerImpl(String name, Location spawn, Logger logger) {
         this.spawnX = spawn.getX();
@@ -45,6 +51,7 @@ public class FakePlayerImpl implements IFakePlayer {
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         new EmbeddedChannel(connection);
 
+        // v26: factory method cookie
         CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
         nmsPlayer.connection = new ServerGamePacketListenerImpl(server, connection, nmsPlayer, cookie);
 
@@ -57,26 +64,38 @@ public class FakePlayerImpl implements IFakePlayer {
 
         nmsPlayer.setGameMode(GameType.CREATIVE);
         nmsPlayer.setNoGravity(true);
-        nmsPlayer.snapTo(spawnX, spawnY, spawnZ, 0f, 0f);
+        nmsPlayer.snapTo(spawnX, spawnY, spawnZ, 0f, 0f); // v26: snapTo
         pickNewTarget();
     }
 
     private void pickNewTarget() {
         double angle = random.nextDouble() * Math.PI * 2;
-        double dist = random.nextDouble() * radius;
+        double dist  = random.nextDouble() * radius;
         targetX = spawnX + Math.cos(angle) * dist;
         targetZ = spawnZ + Math.sin(angle) * dist;
-        targetY = groundMode ? spawnY : Math.max(64, Math.min(250, spawnY + random.nextDouble() * 100 + 20));
+        targetY = (mode == BotManager.GroundMode.WALK)
+                ? spawnY
+                : Math.max(64, Math.min(250, spawnY + random.nextDouble() * 100 + 20));
     }
 
     @Override
     public void tick() {
         if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
-        double dx = targetX - nmsPlayer.getX();
-        double dz = targetZ - nmsPlayer.getZ();
+
+        if (mode == BotManager.GroundMode.NONE && gotoTarget == null) return;
+
+        boolean useGoto = (gotoTarget != null);
+        double effX = useGoto ? gotoTarget.getX() : targetX;
+        double effY = useGoto ? gotoTarget.getY() : targetY;
+        double effZ = useGoto ? gotoTarget.getZ() : targetZ;
+
+        double dx = effX - nmsPlayer.getX();
+        double dz = effZ - nmsPlayer.getZ();
         double horizDist = Math.sqrt(dx * dx + dz * dz);
+
         if (horizDist < 2.0) {
-            pickNewTarget();
+            if (useGoto) gotoTarget = null;
+            else pickNewTarget();
             return;
         }
 
@@ -86,14 +105,18 @@ public class FakePlayerImpl implements IFakePlayer {
         double newZ = nmsPlayer.getZ() + nz;
         double newY;
 
-        if (groundMode) {
+        boolean walkOnGround = (mode == BotManager.GroundMode.WALK)
+                || (useGoto && mode == BotManager.GroundMode.NONE);
+
+        if (walkOnGround) {
             newY = getSurfaceY(newX, newZ);
         } else {
-            double dy = targetY - nmsPlayer.getY();
+            double dy = effY - nmsPlayer.getY();
             double totalDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             newY = nmsPlayer.getY() + (dy / totalDist * speed);
         }
-        nmsPlayer.snapTo(newX, newY, newZ, nmsPlayer.getYRot(), nmsPlayer.getXRot());
+
+        nmsPlayer.snapTo(newX, newY, newZ, nmsPlayer.getYRot(), nmsPlayer.getXRot()); // v26: snapTo
     }
 
     private double getSurfaceY(double x, double z) {
@@ -107,18 +130,22 @@ public class FakePlayerImpl implements IFakePlayer {
     }
 
     @Override
+    public void navigateTo(Location target) {
+        this.gotoTarget = target.clone();
+    }
+
+    @Override
     public void sendChat(String message) {
         if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
-        try {
-            nmsPlayer.getBukkitEntity().chat(message);
-        } catch (Exception ignored) {}
+        try { nmsPlayer.getBukkitEntity().chat(message); } catch (Exception ignored) {}
     }
 
     @Override
     public void teleportTo(Location loc) {
         if (nmsPlayer == null) return;
-        double y = groundMode ? getSurfaceY(loc.getX(), loc.getZ()) : loc.getY();
-        nmsPlayer.snapTo(loc.getX(), y, loc.getZ(), loc.getYaw(), loc.getPitch());
+        gotoTarget = null;
+        double y = (mode == BotManager.GroundMode.WALK) ? getSurfaceY(loc.getX(), loc.getZ()) : loc.getY();
+        nmsPlayer.snapTo(loc.getX(), y, loc.getZ(), loc.getYaw(), loc.getPitch()); // v26: snapTo
     }
 
     @Override
@@ -126,14 +153,11 @@ public class FakePlayerImpl implements IFakePlayer {
         try {
             if (nmsPlayer != null && nmsPlayer.connection != null)
                 nmsPlayer.connection.disconnect(Component.literal("Stress bot removed"));
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
     }
 
     @Override
-    public void setSpeed(double s) {
-        this.speed = s;
-    }
+    public void setSpeed(double s) { this.speed = s; }
 
     @Override
     public void setRadius(double r) {
@@ -142,18 +166,22 @@ public class FakePlayerImpl implements IFakePlayer {
     }
 
     @Override
-    public void setGroundMode(boolean g) {
-        this.groundMode = g;
+    public void setMode(BotManager.GroundMode mode) {
+        this.mode = mode;
+        gotoTarget = null;
         pickNewTarget();
     }
 
     @Override
-    public boolean isAlive() {
-        return nmsPlayer != null && nmsPlayer.isAlive();
+    public void setGroundMode(boolean g) {
+        setMode(g ? BotManager.GroundMode.WALK : BotManager.GroundMode.FLY);
     }
 
     @Override
+    public boolean isAlive() { return nmsPlayer != null && nmsPlayer.isAlive(); }
+
+    @Override
     public String getName() {
-        return nmsPlayer != null ? nmsPlayer.getGameProfile().name() : "unknown";
+        return nmsPlayer != null ? nmsPlayer.getGameProfile().name() : "unknown"; // v26: name()
     }
 }

@@ -4,7 +4,7 @@ subprojects {
         toolchain.languageVersion.set(JavaLanguageVersion.of(21))
     }
     group = "me.micahcode"
-    version = "1.0.0"
+    version = "2.0.0"
 }
 
 tasks.register<Copy>("buildAll") {

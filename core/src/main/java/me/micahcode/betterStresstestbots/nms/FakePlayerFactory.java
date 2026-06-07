@@ -17,8 +17,8 @@ public class FakePlayerFactory {
         } catch (Exception e) {
             String mc = Bukkit.getMinecraftVersion();
             throw new RuntimeException(
-                "Failed to create FakePlayer for MC " + mc + ". " +
-                "Make sure you're using the jar for your version!", e
+                    "Failed to create FakePlayer for MC " + mc + ". " +
+                            "Make sure you're using the jar for your version!", e
             );
         }
     }
@@ -27,7 +27,7 @@ public class FakePlayerFactory {
         String mc = Bukkit.getMinecraftVersion();
         if (mc.startsWith("26.") || mc.startsWith("27.")) return "26.x";
         if (mc.startsWith("1.21.1") || mc.startsWith("1.21.8")
-         || mc.startsWith("1.21.10")) return "1.21.11-group";
+                || mc.startsWith("1.21.10")) return "1.21.11-group";
         return "1.21.x";
     }
 }

@@ -1,5 +1,8 @@
 package me.micahcode.betterStresstestbots;
 
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -24,6 +27,11 @@ public class StressCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+
+        if (label.equalsIgnoreCase("goto")) {
+            return handleGoto(sender, args);
+        }
+
         if (label.equalsIgnoreCase("start")) {
             return handleStart(sender, args);
         }
@@ -52,7 +60,7 @@ public class StressCommand implements CommandExecutor, TabCompleter {
                     int count = Integer.parseInt(args[1]);
                     manager.setTargetCount(count);
                     sender.sendMessage(PREFIX + "Count set to " + ACCENT + manager.getTargetCount()
-                            + MUTED + " — use §f/start§7 to spawn the bots in.");
+                            + MUTED + ". Use §f/start§7 to spawn the bots in!");
                 } catch (NumberFormatException e) {
                     sender.sendMessage(ERR + "Invalid number.");
                 }
@@ -88,17 +96,16 @@ public class StressCommand implements CommandExecutor, TabCompleter {
 
             case "mode" -> {
                 if (args.length < 2) {
-                    sender.sendMessage(ERR + "Usage: /stress mode <fly|walk>");
+                    sender.sendMessage(ERR + "Usage: /stress mode <none|fly|walk>");
                     return true;
                 }
-                boolean walk = args[1].equalsIgnoreCase("walk");
-                boolean fly = args[1].equalsIgnoreCase("fly");
-                if (!walk && !fly) {
-                    sender.sendMessage(ERR + "Mode must be 'fly' or 'walk'.");
-                    return true;
+                BotManager.GroundMode mode = BotManager.GroundMode.fromString(args[1]);
+                if (args[1].equalsIgnoreCase("none") || args[1].equalsIgnoreCase("walk") || args[1].equalsIgnoreCase("fly")) {
+                    manager.setGroundMode(mode);
+                    sender.sendMessage(PREFIX + "Mode → " + ACCENT + mode);
+                } else {
+                    sender.sendMessage(ERR + "Mode must be 'none', 'fly', or 'walk'.");
                 }
-                manager.setGroundMode(walk);
-                sender.sendMessage(PREFIX + "Mode → " + ACCENT + (walk ? "walk" : "fly"));
             }
 
             case "chat" -> {
@@ -120,20 +127,76 @@ public class StressCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(PREFIX + "Teleported " + ACCENT + manager.getBotCount() + MUTED + " bots to you.");
             }
 
+            case "goto" -> {
+                return handleGoto(sender, Arrays.copyOfRange(args, 1, args.length));
+            }
+
             case "status" -> sendStatus(sender);
 
             default ->
-                    sender.sendMessage(ERR + "Unknown subcommand. Try: start, stop, count, speed, radius, mode, chat, tp, status");
+                    sender.sendMessage(ERR + "Unknown subcommand. Try: start, stop, count, speed, radius, mode, chat, tp, goto, status");
         }
         return true;
     }
 
-    private boolean handleStart(CommandSender sender, String[] args) {
-        if (args.length >= 1) {
+    private boolean handleGoto(CommandSender sender, String[] args) {
+        Location target;
+
+        if (args.length == 0) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(ERR + "Usage: /goto <x> <y> <z> [world]");
+                return true;
+            }
+            target = player.getLocation();
+        } else if (args.length >= 3) {
             try {
-                manager.setTargetCount(Integer.parseInt(args[0]));
+                double x = Double.parseDouble(args[0]);
+                double y = Double.parseDouble(args[1]);
+                double z = Double.parseDouble(args[2]);
+
+                World world;
+                if (args.length >= 4) {
+                    world = Bukkit.getWorld(args[3]);
+                    if (world == null) {
+                        sender.sendMessage(ERR + "Unknown world: " + args[3]);
+                        return true;
+                    }
+                } else if (sender instanceof Player player) {
+                    world = player.getWorld();
+                } else {
+                    world = Bukkit.getWorlds().get(0);
+                }
+
+                target = new Location(world, x, y, z);
             } catch (NumberFormatException e) {
-                sender.sendMessage(ERR + "Usage: /start [count]");
+                sender.sendMessage(ERR + "Usage: /goto <x> <y> <z> [world]");
+                return true;
+            }
+        } else {
+            sender.sendMessage(ERR + "Usage: /goto [x y z [world]]");
+            return true;
+        }
+
+        manager.gotoLocation(target);
+        sender.sendMessage(PREFIX + "Sending " + ACCENT + manager.getBotCount()
+                + MUTED + " bots to §f"
+                + (int) target.getX() + "§7, §f"
+                + (int) target.getY() + "§7, §f"
+                + (int) target.getZ());
+        return true;
+    }
+
+    private boolean handleStart(CommandSender sender, String[] args) {
+        for (String arg : args) {
+            BotManager.GroundMode parsed = tryParseMode(arg);
+            if (parsed != null) {
+                manager.setGroundMode(parsed);
+                continue;
+            }
+            try {
+                manager.setTargetCount(Integer.parseInt(arg));
+            } catch (NumberFormatException e) {
+                sender.sendMessage(ERR + "Usage: /start [count] [none|walk|fly]");
                 return true;
             }
         }
@@ -147,8 +210,20 @@ public class StressCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(PREFIX + "Spawning " + ACCENT + manager.getTargetCount() + MUTED + " bots"
                 + " | speed=" + manager.getSpeed()
                 + " | radius=" + manager.getRadius()
-                + " | mode=" + (manager.isGroundMode() ? "walk" : "fly"));
+                + " | mode=" + manager.getGroundMode());
         return true;
+    }
+
+    /**
+     * Returns a GroundMode if the string matches one, or null if it doesn't.
+     */
+    private BotManager.GroundMode tryParseMode(String s) {
+        return switch (s.toLowerCase()) {
+            case "none" -> BotManager.GroundMode.NONE;
+            case "walk" -> BotManager.GroundMode.WALK;
+            case "fly" -> BotManager.GroundMode.FLY;
+            default -> null;
+        };
     }
 
     // todo: make this look better
@@ -159,29 +234,52 @@ public class StressCommand implements CommandExecutor, TabCompleter {
                 + MUTED + " (cap " + BotManager.MAX_BOTS + ")");
         sender.sendMessage(MUTED + "  Speed: §f" + manager.getSpeed()
                 + MUTED + "  Radius: §f" + manager.getRadius()
-                + MUTED + "  Mode: §f" + (manager.isGroundMode() ? "walk" : "fly"));
-        sender.sendMessage(MUTED + "  /stress count|speed|radius|mode|chat|tp → configure");
-        sender.sendMessage(MUTED + "  /start [n] → spawn  |  /stress stop → remove all");
+                + MUTED + "  Mode: §f" + manager.getGroundMode());
+        sender.sendMessage(MUTED + "  /stress count|speed|radius|mode|chat|tp|goto → configure");
+        sender.sendMessage(MUTED + "  /start [n] [mode] → spawn  |  /stress stop → remove all");
+        sender.sendMessage(MUTED + "  /goto [x y z] → send bots to location");
         sender.sendMessage(PREFIX + MUTED + "───────────────────────");
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (alias.equalsIgnoreCase("start"))
-            return args.length == 1 ? Arrays.asList("10", "25", "50", "100") : List.of();
+        if (alias.equalsIgnoreCase("goto")) {
+            if (args.length <= 3) return List.of("<x>", "<y>", "<z>").subList(args.length - 1, args.length);
+            if (args.length == 4) return Bukkit.getWorlds().stream().map(w -> w.getName()).toList();
+            return List.of();
+        }
+
+        if (alias.equalsIgnoreCase("start")) {
+            if (args.length == 1) return Arrays.asList("10", "25", "50", "100");
+            if (args.length == 2) return Arrays.asList("none", "walk", "fly");
+            return List.of();
+        }
 
         if (args.length == 1)
-            return Arrays.asList("start", "stop", "count", "speed", "radius", "mode", "chat", "tp", "status");
+            return Arrays.asList("start", "stop", "count", "speed", "radius", "mode", "chat", "tp", "goto", "status");
+
         if (args.length == 2) {
             return switch (args[0].toLowerCase()) {
                 case "count" -> Arrays.asList("10", "25", "50", "100");
                 case "speed" -> Arrays.asList("0.05", "0.1", "0.2", "0.5");
-                case "radius" -> Arrays.asList("100", "500", "1000");
-                case "mode" -> Arrays.asList("fly", "walk");
+                case "radius" -> Arrays.asList("25", "50", "100", "250", "500", "1000");
+                case "mode" -> Arrays.asList("none", "fly", "walk");
                 case "chat" -> Arrays.asList("Hello!", "Test message", "Stress test");
+                case "start" -> Arrays.asList("10", "25", "50", "100");
+                case "goto" -> List.of("<x>");
                 default -> List.of();
             };
         }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("start"))
+            return Arrays.asList("none", "walk", "fly");
+
+        if (args[0].equalsIgnoreCase("goto")) {
+            if (args.length == 3) return List.of("<y>");
+            if (args.length == 4) return List.of("<z>");
+            if (args.length == 5) return Bukkit.getWorlds().stream().map(w -> w.getName()).toList();
+        }
+
         return List.of();
     }
 }
