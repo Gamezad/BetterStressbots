@@ -11,7 +11,7 @@ tasks.register<Copy>("buildAll") {
     group = "build"
     description = "Build all version jars and collect in build/dist"
 
-    dependsOn(":v1_21:assemble", ":v1_21_11:assemble", ":v26:assemble")
+    dependsOn(":v1_21:assemble", ":v1_21_11:assemble", ":v26.1.x:assemble", ":v26.2:assemble")
 
     from(project(":v1_21").layout.buildDirectory.dir("libs")) {
         include("*.jar")
@@ -21,7 +21,11 @@ tasks.register<Copy>("buildAll") {
         include("*.jar")
         exclude("*-dev*")
     }
-    from(project(":v26").layout.buildDirectory.dir("libs")) {
+    from(project(":v26.1.x").layout.buildDirectory.dir("libs")) {
+        include("*.jar")
+        exclude("*-dev*")
+    }
+    from(project(":v26.2").layout.buildDirectory.dir("libs")) {
         include("*.jar")
         exclude("*-dev*")
     }

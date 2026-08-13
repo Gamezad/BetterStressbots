@@ -214,9 +214,6 @@ public class StressCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    /**
-     * Returns a GroundMode if the string matches one, or null if it doesn't.
-     */
     private BotManager.GroundMode tryParseMode(String s) {
         return switch (s.toLowerCase()) {
             case "none" -> BotManager.GroundMode.NONE;

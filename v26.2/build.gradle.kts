@@ -9,21 +9,21 @@ repositories {
 }
 
 dependencies {
-    paperweight.paperDevBundle("26.1.2.build.+")
+    paperweight.paperDevBundle("26.2.build.+")
     implementation(project(":core"))
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(26))
 }
 
 tasks.compileJava {
-    options.release.set(25)
+    options.release.set(26)
 }
 
 tasks.shadowJar {
     archiveBaseName.set("BetterStresstestbots")
-    archiveClassifier.set("26")
+    archiveClassifier.set("26.2")
 }
 
 tasks.assemble {

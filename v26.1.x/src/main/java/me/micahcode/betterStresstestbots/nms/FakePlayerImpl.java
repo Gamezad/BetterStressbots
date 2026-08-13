@@ -34,7 +34,6 @@ public class FakePlayerImpl implements IFakePlayer {
 
     private BotManager.GroundMode mode = BotManager.GroundMode.NONE;
 
-    /** When non-null the bot navigates to a fixed point instead of wandering. */
     private Location gotoTarget = null;
 
     public FakePlayerImpl(String name, Location spawn, Logger logger) {
