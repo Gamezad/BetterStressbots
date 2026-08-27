@@ -14,12 +14,9 @@ import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.levelgen.Heightmap;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.craftbukkit.CraftWorld;
-import org.bukkit.entity.Player;
-import org.bukkit.event.player.PlayerMoveEvent;
 
 import java.util.Random;
 import java.util.UUID;
@@ -142,22 +139,9 @@ public class FakePlayerImpl implements IFakePlayer {
             newY = nmsPlayer.getY() + (dy / totalDist * speed);
         }
 
-        movePlayerTo(newX, newY, newZ, nmsPlayer.getYRot(), nmsPlayer.getXRot());
+        nmsPlayer.snapTo(newX, newY, newZ); nmsPlayer.setYRot(nmsPlayer.getYRot()); nmsPlayer.setXRot(nmsPlayer.getXRot());
     }
 
-    /**
-     * Moves the server player and fires PlayerMoveEvent first so other plugins observe
-     * bot movement like a normal player.
-     */
-    private void movePlayerTo(double x, double y, double z, float yaw, float pitch) {
-        Player bukkitPlayer = nmsPlayer.getBukkitEntity();
-        Location from = bukkitPlayer.getLocation();
-        Location to = new Location(from.getWorld(), x, y, z, yaw, pitch);
-        PlayerMoveEvent event = new PlayerMoveEvent(bukkitPlayer, from, to);
-        Bukkit.getPluginManager().callEvent(event);
-        if (event.isCancelled()) return;
-        nmsPlayer.snapTo(x, y, z); nmsPlayer.setYRot(yaw); nmsPlayer.setXRot(pitch); // v1_21_11: snapTo
-    }
 
     private double getSurfaceY(double x, double z) {
         try {
@@ -199,15 +183,7 @@ public class FakePlayerImpl implements IFakePlayer {
         if (nmsPlayer == null) return;
         gotoTarget = null;
         double y = (mode == BotManager.GroundMode.WALK) ? getSurfaceY(loc.getX(), loc.getZ()) : loc.getY();
-        Location target = loc.clone();
-        target.setY(y);
-        // Bukkit teleport fires PlayerTeleportEvent/PlayerChangedWorldEvent and moves the
-        // player through the normal server path, which fixes plugins that check those events.
-        try {
-            nmsPlayer.getBukkitEntity().teleport(target);
-        } catch (Exception ignored) {
-            nmsPlayer.snapTo(target.getX(), target.getY(), target.getZ()); nmsPlayer.setYRot(target.getYaw()); nmsPlayer.setXRot(target.getPitch());
-        }
+        nmsPlayer.snapTo(loc.getX(), y, loc.getZ()); nmsPlayer.setYRot(loc.getYaw()); nmsPlayer.setXRot(loc.getPitch());
         lastX = nmsPlayer.getX();
         lastY = nmsPlayer.getY();
         lastZ = nmsPlayer.getZ();
