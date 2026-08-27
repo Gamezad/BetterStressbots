@@ -12,9 +12,10 @@ dependencies {
     compileOnly(files("../run/versions/1.21.11/paper-1.21.11.jar"))
     // The Paper server jar already contains the full Bukkit/CraftBukkit API and seals
     // org.bukkit. Exclude the duplicate paper-api jar so javac does not reject the
-    // sealed-package conflict.
+    // sealed-package conflict. Library jars live in nested version directories, so the
+    // recursive `**` pattern is required here.
     compileOnly(fileTree("../run/libraries") {
-        include("*.jar")
+        include("**/*.jar")
         exclude("**/io/papermc/paper/paper-api/**")
     })
 }
