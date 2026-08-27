@@ -1,21 +1,16 @@
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        maven("https://repo.papermc.io/repository/maven-public/")
-    }
-}
-
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-}
-
 rootProject.name = "BetterStresstestbots"
 
-// 26.x modules require JDK 25 / JDK 26. On older JDKs (e.g. the JDK 21 CI runner)
-// they are left out so `./gradlew build` still builds the 1.21 jars.
-val javaSpecification = System.getProperty("java.specification.version") ?: "17"
-val javaMajor = javaSpecification.substringBefore(".").toIntOrNull() ?: 17
+// Default/offline build target: core + 1.21.11 (Paper's Mojang-mapped 1.21.11 jar).
+// The other modules are only included when `-Pfull` / `BUILD_FULL=true` is set and the
+// required JDK is available (1.21 uses paperweight, 26.x needs JDK 25/26).
+val includeFull = System.getProperty("full") == "true" || System.getenv("BUILD_FULL") == "true"
 
-include("core", "v1_21", "v1_21_11")
-if (javaMajor >= 25) include("v26.1.x")
-if (javaMajor >= 26) include("v26.2")
+include("core", "v1_21_11")
+if (includeFull) {
+    include("v1_21")
+
+    val javaSpecification = System.getProperty("java.specification.version") ?: "17"
+    val javaMajor = javaSpecification.substringBefore(".").toIntOrNull() ?: 17
+    if (javaMajor >= 25) include("v26.1.x")
+    if (javaMajor >= 26) include("v26.2")
+}

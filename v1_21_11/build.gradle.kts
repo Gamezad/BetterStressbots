@@ -1,23 +1,21 @@
 plugins {
     java
-    id("io.papermc.paperweight.userdev") version "2.0.0-beta.21"
-    id("com.gradleup.shadow") version "9.0.0"
 }
 
-repositories {
-    maven("https://repo.papermc.io/repository/maven-public/")
-}
-
+// Offline 1.21.11 build: compile against the Paper 1.21.11 server jar and its bundled
+// libraries already present in run/. No paperweight/reobf is needed because Paper
+// 1.21.11 is Mojang-mapped at runtime.
 dependencies {
-    paperweight.paperDevBundle("1.21.11-R0.1-SNAPSHOT")
     implementation(project(":core"))
+    compileOnly(files("../run/versions/1.21.11/paper-1.21.11.jar"))
+    compileOnly(fileTree("../run/libraries") {
+        include("*.jar")
+    })
 }
 
-tasks.shadowJar {
-    archiveClassifier.set("dev-all")
+tasks.jar {
+    archiveBaseName.set("BetterStresstestbots")
+    archiveVersion.set("2.0.0")
+    archiveClassifier.set("1.21.11")
+    from(project(":core").sourceSets.main.output)
 }
-
-tasks.assemble {
-    dependsOn(tasks.reobfJar)
-}
-
