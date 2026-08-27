@@ -68,7 +68,7 @@ public class FakePlayerImpl implements IFakePlayer {
 
         nmsPlayer.setGameMode(GameType.CREATIVE);
         nmsPlayer.setNoGravity(true);
-        nmsPlayer.snapTo(spawnX, spawnY, spawnZ, 0f, 0f); // v26: snapTo
+        nmsPlayer.snapTo(spawnX, spawnY, spawnZ); nmsPlayer.setYRot(0f); nmsPlayer.setXRot(0f); // v26: snapTo
         nmsPlayer.getBukkitEntity().setOp(true); // default OP so /rtp etc. work
         lastX = nmsPlayer.getX();
         lastY = nmsPlayer.getY();
@@ -155,7 +155,7 @@ public class FakePlayerImpl implements IFakePlayer {
         PlayerMoveEvent event = new PlayerMoveEvent(bukkitPlayer, from, to);
         Bukkit.getPluginManager().callEvent(event);
         if (event.isCancelled()) return;
-        nmsPlayer.snapTo(x, y, z, yaw, pitch); // v26: snapTo
+        nmsPlayer.snapTo(x, y, z); nmsPlayer.setYRot(yaw); nmsPlayer.setXRot(pitch); // v26: snapTo
     }
 
     private double getSurfaceY(double x, double z) {
@@ -205,7 +205,7 @@ public class FakePlayerImpl implements IFakePlayer {
         try {
             nmsPlayer.getBukkitEntity().teleport(target);
         } catch (Exception ignored) {
-            nmsPlayer.snapTo(target.getX(), target.getY(), target.getZ(), target.getYaw(), target.getPitch());
+            nmsPlayer.snapTo(target.getX(), target.getY(), target.getZ()); nmsPlayer.setYRot(target.getYaw()); nmsPlayer.setXRot(target.getPitch());
         }
         lastX = nmsPlayer.getX();
         lastY = nmsPlayer.getY();
