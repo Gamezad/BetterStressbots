@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.SourceSetContainer
+
 plugins {
     java
 }
@@ -13,9 +15,14 @@ dependencies {
     })
 }
 
+val coreOutput = project(":core")
+    .extensions.getByType(SourceSetContainer::class.java)
+    .getByName("main")
+    .output
+
 tasks.jar {
     archiveBaseName.set("BetterStresstestbots")
     archiveVersion.set("2.0.0")
     archiveClassifier.set("1.21.11")
-    from(project(":core").sourceSets.main.output)
+    from(coreOutput)
 }
