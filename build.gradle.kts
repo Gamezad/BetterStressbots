@@ -5,6 +5,13 @@ subprojects {
     }
     group = "me.micahcode"
     version = "2.0.0"
+
+    // The shared GitHub Actions workflow runs `./gradlew build` on JDK 21.
+    // Build the requested/jar-producing 1.21.11 module by default. Other modules
+    // are built through `buildAll` or explicit task names (e.g. `:v1_21:assemble`).
+    tasks.named("build") {
+        if (project.name != "v1_21_11") dependsOn.clear()
+    }
 }
 
 val includedProjects = gradle.rootProject.subprojects.map { it.name }.toSet()
