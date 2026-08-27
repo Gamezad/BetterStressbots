@@ -29,3 +29,12 @@ tasks.shadowJar {
 tasks.assemble {
     dependsOn(tasks.shadowJar)
 }
+
+/*
+ * The default `build` lifecycle (used by the GitHub Actions "Java CI with Gradle"
+ * workflow on a JDK 21 runner) should not try to compile 26.2, which needs JDK 26.
+ * Build 26.2 explicitly with `:v26.2:assemble` on a JDK 26 toolchain.
+ */
+tasks.named("build") {
+    dependsOn.clear()
+}
