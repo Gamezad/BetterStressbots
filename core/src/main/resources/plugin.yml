@@ -7,7 +7,7 @@ description: Server-side stress testing with fake bot players
 commands:
   stress:
     description: Control stress test bots
-    usage: /stress <start|stop|count|speed|radius|mode|chat|tp|goto|status> [value]
+    usage: /stress <start|stop|count|speed|radius|mode|chat|cmd|op|tp|goto|status> [value]
     permission: stresstestbots.use
   start:
     description: Quick-start bots
@@ -16,6 +16,10 @@ commands:
   goto:
     description: Send all bots to a location
     usage: /goto [x y z [world]]
+    permission: stresstestbots.use
+  botcmd:
+    description: Make all bots run a command (e.g. /botcmd /rtp)
+    usage: /botcmd <command>
     permission: stresstestbots.use
 
 permissions:

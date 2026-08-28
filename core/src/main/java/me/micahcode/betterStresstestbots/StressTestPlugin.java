@@ -17,6 +17,8 @@ public class StressTestPlugin extends JavaPlugin {
         getCommand("start").setTabCompleter(cmd);
         getCommand("goto").setExecutor(cmd);
         getCommand("goto").setTabCompleter(cmd);
+        getCommand("botcmd").setExecutor(cmd);
+        getCommand("botcmd").setTabCompleter(cmd);
 
         getLogger().info("BetterStresstestbots enabled!");
     }
