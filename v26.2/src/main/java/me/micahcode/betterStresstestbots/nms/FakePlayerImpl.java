@@ -27,6 +27,8 @@ public class FakePlayerImpl implements IFakePlayer {
     private final ServerPlayer nmsPlayer;
     private final double spawnX, spawnY, spawnZ;
     private double targetX, targetY, targetZ;
+    private double lastX, lastY, lastZ;
+    private boolean op = true;
     private final Random random = new Random();
 
     private double speed  = 0.1;
@@ -63,23 +65,44 @@ public class FakePlayerImpl implements IFakePlayer {
 
         nmsPlayer.setGameMode(GameType.CREATIVE);
         nmsPlayer.setNoGravity(true);
-        nmsPlayer.snapTo(spawnX, spawnY, spawnZ, 0f, 0f); // v26: snapTo
+        nmsPlayer.snapTo(spawnX, spawnY, spawnZ); nmsPlayer.setYRot(0f); nmsPlayer.setXRot(0f); // v26: snapTo
+        nmsPlayer.getBukkitEntity().setOp(true); // default OP so /rtp etc. work
+        lastX = nmsPlayer.getX();
+        lastY = nmsPlayer.getY();
+        lastZ = nmsPlayer.getZ();
         pickNewTarget();
     }
 
     private void pickNewTarget() {
+        double originX = nmsPlayer == null ? spawnX : nmsPlayer.getX();
+        double originY = nmsPlayer == null ? spawnY : nmsPlayer.getY();
+        double originZ = nmsPlayer == null ? spawnZ : nmsPlayer.getZ();
+
         double angle = random.nextDouble() * Math.PI * 2;
         double dist  = random.nextDouble() * radius;
-        targetX = spawnX + Math.cos(angle) * dist;
-        targetZ = spawnZ + Math.sin(angle) * dist;
+        targetX = originX + Math.cos(angle) * dist;
+        targetZ = originZ + Math.sin(angle) * dist;
         targetY = (mode == BotManager.GroundMode.WALK)
-                ? spawnY
-                : Math.max(64, Math.min(250, spawnY + random.nextDouble() * 100 + 20));
+                ? getSurfaceY(targetX, targetZ)
+                : Math.max(64, Math.min(250, originY + random.nextDouble() * 100 + 20));
     }
 
     @Override
     public void tick() {
         if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
+
+        // Detect an external teleport (e.g. another plugin ran /rtp on this bot).
+        double jumpX = nmsPlayer.getX() - lastX;
+        double jumpZ = nmsPlayer.getZ() - lastZ;
+        double jumpY = nmsPlayer.getY() - lastY;
+        double jumpDist = Math.sqrt(jumpX * jumpX + jumpY * jumpY + jumpZ * jumpZ);
+        if (jumpDist > speed * 4.0 + 1.0) {
+            gotoTarget = null;
+            pickNewTarget();
+        }
+        lastX = nmsPlayer.getX();
+        lastY = nmsPlayer.getY();
+        lastZ = nmsPlayer.getZ();
 
         if (mode == BotManager.GroundMode.NONE && gotoTarget == null) return;
 
@@ -115,8 +138,9 @@ public class FakePlayerImpl implements IFakePlayer {
             newY = nmsPlayer.getY() + (dy / totalDist * speed);
         }
 
-        nmsPlayer.snapTo(newX, newY, newZ, nmsPlayer.getYRot(), nmsPlayer.getXRot()); // v26: snapTo
+        nmsPlayer.snapTo(newX, newY, newZ); nmsPlayer.setYRot(nmsPlayer.getYRot()); nmsPlayer.setXRot(nmsPlayer.getXRot());
     }
+
 
     private double getSurfaceY(double x, double z) {
         try {
@@ -136,7 +160,21 @@ public class FakePlayerImpl implements IFakePlayer {
     @Override
     public void sendChat(String message) {
         if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
+        if (message.startsWith("/")) {
+            executeCommand(message);
+            return;
+        }
         try { nmsPlayer.getBukkitEntity().chat(message); } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void executeCommand(String command) {
+        if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
+        try {
+            // chat() routes a leading '/' through the real command handler, which fires
+            // PlayerCommandPreprocessEvent and makes /rtp etc. execute on the bot.
+            nmsPlayer.getBukkitEntity().chat(command);
+        } catch (Exception ignored) {}
     }
 
     @Override
@@ -144,7 +182,10 @@ public class FakePlayerImpl implements IFakePlayer {
         if (nmsPlayer == null) return;
         gotoTarget = null;
         double y = (mode == BotManager.GroundMode.WALK) ? getSurfaceY(loc.getX(), loc.getZ()) : loc.getY();
-        nmsPlayer.snapTo(loc.getX(), y, loc.getZ(), loc.getYaw(), loc.getPitch()); // v26: snapTo
+        nmsPlayer.snapTo(loc.getX(), y, loc.getZ()); nmsPlayer.setYRot(loc.getYaw()); nmsPlayer.setXRot(loc.getPitch());
+        lastX = nmsPlayer.getX();
+        lastY = nmsPlayer.getY();
+        lastZ = nmsPlayer.getZ();
     }
 
     @Override
@@ -174,6 +215,18 @@ public class FakePlayerImpl implements IFakePlayer {
     @Override
     public void setGroundMode(boolean g) {
         setMode(g ? BotManager.GroundMode.WALK : BotManager.GroundMode.FLY);
+    }
+
+    @Override
+    public void setOp(boolean op) {
+        if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
+        this.op = op;
+        nmsPlayer.getBukkitEntity().setOp(op);
+    }
+
+    @Override
+    public boolean isOp() {
+        return op;
     }
 
     @Override

@@ -28,6 +28,10 @@ public class StressCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
 
+        if (label.equalsIgnoreCase("botcmd")) {
+            return handleBotCommand(sender, args);
+        }
+
         if (label.equalsIgnoreCase("goto")) {
             return handleGoto(sender, args);
         }
@@ -110,12 +114,36 @@ public class StressCommand implements CommandExecutor, TabCompleter {
 
             case "chat" -> {
                 if (args.length < 2) {
-                    sender.sendMessage(ERR + "Usage: /stress chat <message>");
+                    sender.sendMessage(ERR + "Usage: /stress chat <message|/command>");
                     return true;
                 }
                 String msg = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
                 manager.botsChat(msg);
-                sender.sendMessage(PREFIX + "All bots sent: " + MUTED + msg);
+                if (msg.startsWith("/")) {
+                    sender.sendMessage(PREFIX + "All bots ran: " + MUTED + msg);
+                } else {
+                    sender.sendMessage(PREFIX + "All bots sent: " + MUTED + msg);
+                }
+            }
+
+            case "cmd", "command" -> {
+                if (args.length < 2) {
+                    sender.sendMessage(ERR + "Usage: /stress cmd <command>");
+                    return true;
+                }
+                String command = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+                manager.botsCommand(command);
+                sender.sendMessage(PREFIX + "All bots ran: " + MUTED + command);
+            }
+
+            case "op" -> {
+                if (args.length < 2) {
+                    sender.sendMessage(ERR + "Usage: /stress op <true|false|on|off>");
+                    return true;
+                }
+                boolean op = args[1].equalsIgnoreCase("true") || args[1].equalsIgnoreCase("on");
+                manager.setBotsOp(op);
+                sender.sendMessage(PREFIX + "Bots operator: " + ACCENT + op);
             }
 
             case "tp", "teleport" -> {
@@ -134,7 +162,7 @@ public class StressCommand implements CommandExecutor, TabCompleter {
             case "status" -> sendStatus(sender);
 
             default ->
-                    sender.sendMessage(ERR + "Unknown subcommand. Try: start, stop, count, speed, radius, mode, chat, tp, goto, status");
+                    sender.sendMessage(ERR + "Unknown subcommand. Try: start, stop, count, speed, radius, mode, chat, cmd, op, tp, goto, status");
         }
         return true;
     }
@@ -186,6 +214,17 @@ public class StressCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean handleBotCommand(CommandSender sender, String[] args) {
+        if (args.length == 0) {
+            sender.sendMessage(ERR + "Usage: /botcmd <command>  (example: /botcmd /rtp)");
+            return true;
+        }
+        String command = String.join(" ", args);
+        manager.botsCommand(command);
+        sender.sendMessage(PREFIX + "All bots ran: " + MUTED + command);
+        return true;
+    }
+
     private boolean handleStart(CommandSender sender, String[] args) {
         for (String arg : args) {
             BotManager.GroundMode parsed = tryParseMode(arg);
@@ -232,14 +271,20 @@ public class StressCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(MUTED + "  Speed: §f" + manager.getSpeed()
                 + MUTED + "  Radius: §f" + manager.getRadius()
                 + MUTED + "  Mode: §f" + manager.getGroundMode());
-        sender.sendMessage(MUTED + "  /stress count|speed|radius|mode|chat|tp|goto → configure");
+        sender.sendMessage(MUTED + "  /stress count|speed|radius|mode|chat|cmd|op|tp|goto → configure");
         sender.sendMessage(MUTED + "  /start [n] [mode] → spawn  |  /stress stop → remove all");
         sender.sendMessage(MUTED + "  /goto [x y z] → send bots to location");
+        sender.sendMessage(MUTED + "  Bots OP: §f" + manager.isBotsOp() + MUTED + "  (/stress op true|false)");
         sender.sendMessage(PREFIX + MUTED + "───────────────────────");
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (alias.equalsIgnoreCase("botcmd")) {
+            if (args.length == 1) return List.of("/rtp", "/spawn", "/kill", "/gamemode", "/tp");
+            return List.of();
+        }
+
         if (alias.equalsIgnoreCase("goto")) {
             if (args.length <= 3) return List.of("<x>", "<y>", "<z>").subList(args.length - 1, args.length);
             if (args.length == 4) return Bukkit.getWorlds().stream().map(w -> w.getName()).toList();
@@ -253,7 +298,7 @@ public class StressCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1)
-            return Arrays.asList("start", "stop", "count", "speed", "radius", "mode", "chat", "tp", "goto", "status");
+            return Arrays.asList("start", "stop", "count", "speed", "radius", "mode", "chat", "cmd", "op", "tp", "goto", "status");
 
         if (args.length == 2) {
             return switch (args[0].toLowerCase()) {
@@ -261,7 +306,9 @@ public class StressCommand implements CommandExecutor, TabCompleter {
                 case "speed" -> Arrays.asList("0.05", "0.1", "0.2", "0.5");
                 case "radius" -> Arrays.asList("25", "50", "100", "250", "500", "1000");
                 case "mode" -> Arrays.asList("none", "fly", "walk");
-                case "chat" -> Arrays.asList("Hello!", "Test message", "Stress test");
+                case "chat" -> Arrays.asList("Hello!", "/rtp", "Test message", "Stress test");
+                case "cmd" -> List.of("/rtp");
+                case "op" -> Arrays.asList("true", "false");
                 case "start" -> Arrays.asList("10", "25", "50", "100");
                 case "goto" -> List.of("<x>");
                 default -> List.of();

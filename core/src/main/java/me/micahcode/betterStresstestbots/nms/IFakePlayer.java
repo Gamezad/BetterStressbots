@@ -13,6 +13,9 @@ public interface IFakePlayer {
     void navigateTo(Location target);
     void teleportTo(Location loc);
     void sendChat(String message);
+    void executeCommand(String command);
+    void setOp(boolean op);
+    boolean isOp();
     boolean isAlive();
     String getName();
 }

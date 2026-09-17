@@ -44,6 +44,7 @@ public class BotManager {
     private int targetCount = 0;
     private int spawnDelayTicks = 2;
     private GroundMode groundMode = GroundMode.NONE; // default: stand still
+    private boolean botsOp = true; // default OP so /rtp and other commands work
 
     public BotManager(StressTestPlugin plugin) {
         this.plugin = plugin;
@@ -76,13 +77,39 @@ public class BotManager {
         bots.forEach(b -> applyModeToBot(b, mode));
     }
 
+    /** Make every running and future bot operator (so /rtp, /home, etc. work). */
+    public void setBotsOp(boolean op) {
+        this.botsOp = op;
+        bots.forEach(b -> b.setOp(op));
+    }
+
+    public boolean isBotsOp() {
+        return botsOp;
+    }
+
+    /**
+     * Executes a command as every bot. Commands should start with '/' or be given
+     * without it; this method normalises the leading slash and dispatches through
+     * the player's normal command pipeline (so PlayerCommandPreprocessEvent fires).
+     */
+    public void botsCommand(String command) {
+        if (command == null || command.isBlank()) return;
+        String normalized = command.startsWith("/") ? command : "/" + command;
+        bots.forEach(b -> b.executeCommand(normalized));
+    }
+
     /** Passes the mode straight through to the bot's setMode(). */
     private void applyModeToBot(IFakePlayer bot, GroundMode mode) {
         bot.setMode(mode);
     }
 
     public void botsChat(String message) {
-        bots.forEach(b -> b.sendChat(message));
+        if (message == null) return;
+        if (message.startsWith("/")) {
+            botsCommand(message);
+        } else {
+            bots.forEach(b -> b.sendChat(message));
+        }
     }
 
     /**
@@ -118,6 +145,7 @@ public class BotManager {
             IFakePlayer bot = FakePlayerFactory.create(name, spawn, plugin.getLogger());
             bot.setSpeed(speed);
             bot.setRadius(radius);
+            bot.setOp(botsOp);
             applyModeToBot(bot, groundMode);
             bots.add(bot);
         }, 0L, spawnDelayTicks);
