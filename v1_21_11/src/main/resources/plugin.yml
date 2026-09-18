@@ -2,6 +2,7 @@ name: BetterStresstestbots
 version: 2.0.0
 main: me.micahcode.betterStresstestbots.StressTestPlugin
 api-version: '1.21'
+folia-supported: true
 description: Server-side stress testing with fake bot players
 
 commands:

@@ -1,0 +1,31 @@
+name: BetterStresstestbots
+version: 2.0.0
+main: me.micahcode.betterStresstestbots.StressTestPlugin
+api-version: '1.21'
+# Paper 1.21-1.21.4 predates the threaded-regions scheduler API the plugin
+# needs for Folia-safe scheduling, so this build is explicitly NOT Folia-safe.
+folia-supported: false
+description: Server-side stress testing with fake bot players
+
+commands:
+  stress:
+    description: Control stress test bots
+    usage: /stress <start|stop|count|speed|radius|mode|chat|cmd|op|tp|goto|status> [value]
+    permission: stresstestbots.use
+  start:
+    description: Quick-start bots
+    usage: /start [count] [none|walk|fly]
+    permission: stresstestbots.use
+  goto:
+    description: Send all bots to a location
+    usage: /goto [x y z [world]]
+    permission: stresstestbots.use
+  botcmd:
+    description: Make all bots run a command (e.g. /botcmd /rtp)
+    usage: /botcmd <command>
+    permission: stresstestbots.use
+
+permissions:
+  stresstestbots.use:
+    description: Use stress test commands
+    default: op

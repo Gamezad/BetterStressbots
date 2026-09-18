@@ -237,4 +237,9 @@ public class FakePlayerImpl implements IFakePlayer {
     public String getName() {
         return nmsPlayer != null ? nmsPlayer.getGameProfile().name() : "unknown"; // v1_21_11: name()
     }
+
+    @Override
+    public org.bukkit.entity.Player getBukkitEntity() {
+        return nmsPlayer != null ? (org.bukkit.entity.Player) nmsPlayer.getBukkitEntity() : null;
+    }
 }

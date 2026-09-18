@@ -2,7 +2,17 @@
 
 Stress test your Minecraft server with server-side fake bots. Unlike external bot tools, this runs entirely as a Paper plugin, so doesnt require `online-mode=false`. Bots can fly or walk around the world, load chunks, and stress the game loop just like real players.
 
-Supports **1.21.x** and **26.x**.
+Supports **1.21.x** and **26.x**, on both **Paper** and **Folia**.
+
+### Folia
+
+The plugin is Folia-compatible (`folia-supported: true`). Bots are ticked and
+controlled through the threaded-regions scheduler API (`Entity#getScheduler` /
+`Bukkit.getRegionScheduler`), so on Folia every bot runs on the region thread
+that owns it — no global main-loop ticking of NMS players. On regular Paper
+the same API falls back to the main server thread, so one code path works on
+both. (On older Paper 1.21–1.21.4 that predate the API, the plugin
+automatically falls back to a classic main-thread tick task.)
 
 ## Building
 
@@ -32,7 +42,13 @@ Build all version jars at once (needs a JDK that the v26 modules require too):
 
 Jars will be in each module's `build/libs/`. Use the `*-reobf.jar` for 1.21.x versions and the regular jar for 26.x.
 
-A GitHub Actions workflow in `.github/workflows/build.yml` builds and uploads the 1.21 and 1.21.11 jars on every push/PR.
+A GitHub Actions workflow in `.github/workflows/build.yml` builds the jars and
+uploads them as workflow artifacts:
+
+- `jars-1.21.11` — the default offline target (core + 1.21.11), built on every push/PR.
+- `jars-full` — all versions (1.21, 1.21.11, 26.1.x, 26.2), built on pushes to
+  master and via the "Run workflow" button (needs the paperweight dev bundles
+  and JDK 25/26 toolchains).
 
 ## Installation
 
@@ -41,8 +57,9 @@ Drop the correct jar for your server version into your `plugins/` folder and res
 | Jar | Version |
 |-----|---------|
 | `v1_21-x.x.x-reobf.jar` | 1.21 – 1.21.4 |
-| `v1_21_11-x.x.x-reobf.jar` | 1.21.5 – 1.21.11 |
-| `v26-x.x.x.jar` | 26.x |
+| `BetterStresstestbots-x.x.x-1.21.11.jar` | 1.21.5 – 1.21.11 |
+| `BetterStresstestbots-x.x.x-26.1.x.jar` | 26.1.x |
+| `BetterStresstestbots-x.x.x-26.2.jar` | 26.2 |
 
 Add this to your `server.properties`:
 
@@ -86,5 +103,5 @@ Bots are real `ServerPlayer` objects, so they fire `PlayerJoinEvent` / `PlayerQu
 
 - Bots are real server-side `ServerPlayer` objects so they load chunks, trigger entity tracking, and count toward the player list just like real players
 - Start small (10–20 bots) and check TPS etc.
-- Hard cap of 1000 bots to prevent OOM crashes
+- Hard cap of 5000 bots to prevent OOM crashes
 - In **walk mode** bots snap to the terrain surface
