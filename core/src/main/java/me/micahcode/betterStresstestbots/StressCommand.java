@@ -131,9 +131,9 @@ public class StressCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(ERR + "Usage: /stress cmd <command>");
                     return true;
                 }
-                String command = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
-                manager.botsCommand(command);
-                sender.sendMessage(PREFIX + "All bots ran: " + MUTED + command);
+                String cmd = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+                manager.botsCommand(cmd);
+                sender.sendMessage(PREFIX + "All bots ran: " + MUTED + cmd);
             }
 
             case "op" -> {
