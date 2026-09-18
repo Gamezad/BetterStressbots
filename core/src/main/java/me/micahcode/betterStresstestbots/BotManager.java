@@ -64,7 +64,12 @@ public class BotManager {
     private volatile double speed = 0.1;
     private volatile double radius = 500.0;
     private volatile int targetCount = 0;
-    private int spawnDelayTicks = 2;
+    /**
+     * Ticks between bot joins. Staggered enough that plugins reacting to
+     * joins (anti-cheat scans, lifesteal, voice chat, ...) don't all fire on
+     * the same tick and cause a TPS dip.
+     */
+    private int spawnDelayTicks = 5;
     private volatile GroundMode groundMode = GroundMode.NONE; // default: stand still
     private volatile boolean botsOp = true; // default OP so /rtp and other commands work
 

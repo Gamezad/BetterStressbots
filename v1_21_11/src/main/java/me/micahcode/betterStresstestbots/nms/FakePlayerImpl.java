@@ -2,10 +2,12 @@ package me.micahcode.betterStresstestbots.nms;
 
 import com.mojang.authlib.GameProfile;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.util.ReferenceCounted;
 import me.micahcode.betterStresstestbots.BotManager;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ServerboundKeepAlivePacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
@@ -18,6 +20,10 @@ import org.bukkit.Location;
 import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.craftbukkit.CraftWorld;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.Random;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -30,6 +36,18 @@ public class FakePlayerImpl implements IFakePlayer {
     private double lastX, lastY, lastZ;
     private boolean op = true;
     private final Random random = new Random();
+
+    /** The embedded channel of the bot's fake connection (server→bot side). */
+    private final EmbeddedChannel channel;
+
+    /**
+     * Best-effort handle to Paper's keep-alive state on the bot's listener
+     * (a {@code MultiThreadedQueue} of pending challenges, resolved via
+     * reflection so this compiles against the plain NMS API only).
+     */
+    private Object keepAliveQueue;
+    private Method keepAlivePeek;
+    private Method keepAliveChallengeId;
 
     private double speed  = 0.1;
     private double radius = 500.0;
@@ -51,7 +69,8 @@ public class FakePlayerImpl implements IFakePlayer {
         nmsPlayer = new ServerPlayer(server, level, profile, ClientInformation.createDefault());
 
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
-        new EmbeddedChannel(connection);
+        channel = new EmbeddedChannel(connection);
+        spoofRemoteAddress(connection);
 
         // v1_21_11: factory method cookie
         CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
@@ -64,6 +83,8 @@ public class FakePlayerImpl implements IFakePlayer {
             return;
         }
 
+        resolveKeepAliveState();
+
         nmsPlayer.setGameMode(GameType.CREATIVE);
         nmsPlayer.setNoGravity(true);
         nmsPlayer.snapTo(spawnX, spawnY, spawnZ); nmsPlayer.setYRot(0f); nmsPlayer.setXRot(0f); // v1_21_11: snapTo
@@ -72,6 +93,120 @@ public class FakePlayerImpl implements IFakePlayer {
         lastY = nmsPlayer.getY();
         lastZ = nmsPlayer.getZ();
         pickNewTarget();
+    }
+
+    /**
+     * Gives the embedded connection a real (fake) remote address. The vanilla
+     * disconnect path casts the connection's address to
+     * {@link InetSocketAddress}; the embedded channel's address is an
+     * {@code EmbeddedSocketAddress}, so without this every bot removal logs a
+     * ClassCastException from {@code Connection.handleDisconnection}.
+     * Best-effort: if the field layout ever changes the CCE just stays.
+     */
+    private void spoofRemoteAddress(Connection connection) {
+        InetSocketAddress fake;
+        try {
+            fake = new InetSocketAddress("127.0.0.1", 51234);
+        } catch (RuntimeException e) {
+            return;
+        }
+        for (String name : new String[] {"remoteAddress", "address"}) {
+            try {
+                Field f = Connection.class.getDeclaredField(name);
+                if (SocketAddress.class.isAssignableFrom(f.getType())) {
+                    f.setAccessible(true);
+                    f.set(connection, fake);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /**
+     * Finds the keep-alive challenge queue on the bot's packet listener.
+     * Paper 1.21.11 stores the state in a {@code io.papermc.paper.util.KeepAlive}
+     * field on the common listener; the fallback layout keeps the
+     * {@code MultiThreadedQueue} directly on the listener. Reflection keeps the
+     * plugin decoupled from Paper's internal class layout.
+     */
+    private void resolveKeepAliveState() {
+        if (nmsPlayer == null || nmsPlayer.connection == null) return;
+        try {
+            Object listener = nmsPlayer.connection;
+
+            Object holder = listener;
+            Field holderField = null;
+            for (Class<?> c = listener.getClass(); c != null && holderField == null; c = c.getSuperclass()) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (f.getType().getName().equals("io.papermc.paper.util.KeepAlive")) {
+                        holderField = f;
+                        break;
+                    }
+                }
+            }
+            if (holderField != null) {
+                holderField.setAccessible(true);
+                holder = holderField.get(listener);
+            }
+
+            Field queueField = null;
+            for (Class<?> c = holder.getClass(); c != null && queueField == null; c = c.getSuperclass()) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (f.getType().getName().equals("ca.spottedleaf.concurrentutil.collection.MultiThreadedQueue")) {
+                        f.setAccessible(true);
+                        queueField = f;
+                        break;
+                    }
+                }
+            }
+            keepAliveQueue = queueField != null ? queueField.get(holder) : null;
+        } catch (Throwable t) {
+            keepAliveQueue = null;
+        }
+    }
+
+    /**
+     * Answers the server's keep-alive challenge so the bot is not kicked with
+     * "was kicked due to keepalive timeout". The embedded connection never
+     * receives or sends real network bytes, so instead of a network round-trip
+     * we peek the pending challenge and acknowledge it through the listener's
+     * own packet handler (exactly what a decoded
+     * {@link ServerboundKeepAlivePacket} would do). Runs on the bot's region
+     * thread, the same thread that owns its connection.
+     */
+    private void acknowledgeKeepAlive() {
+        if (keepAliveQueue == null || nmsPlayer == null || nmsPlayer.connection == null) return;
+        try {
+            if (keepAlivePeek == null) {
+                keepAlivePeek = keepAliveQueue.getClass().getMethod("peek");
+            }
+            Object pending = keepAlivePeek.invoke(keepAliveQueue);
+            if (pending == null) return;
+            if (keepAliveChallengeId == null) {
+                keepAliveChallengeId = pending.getClass().getMethod("challengeId");
+            }
+            long challenge = (Long) keepAliveChallengeId.invoke(pending);
+            nmsPlayer.connection.handleKeepAlive(new ServerboundKeepAlivePacket(challenge));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Discards server→bot packets (chat broadcasts, block updates, the keep
+     * alive challenge itself, ...) that accumulate in the embedded channel's
+     * outbound buffer. Nothing reads them, so without draining they grow
+     * without bound on long stress-test runs.
+     */
+    private void drainOutboundPackets() {
+        try {
+            Object msg;
+            while ((msg = channel.readOutbound()) != null) {
+                if (msg instanceof ReferenceCounted rc) {
+                    rc.release();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     private void pickNewTarget() {
@@ -91,6 +226,9 @@ public class FakePlayerImpl implements IFakePlayer {
     @Override
     public void tick() {
         if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
+
+        acknowledgeKeepAlive();
+        drainOutboundPackets();
 
         // Detect an external teleport (e.g. another plugin ran /rtp on this bot).
         double jumpX = nmsPlayer.getX() - lastX;
