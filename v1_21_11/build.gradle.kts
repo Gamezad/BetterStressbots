@@ -9,14 +9,19 @@ plugins {
 // 1.21.11 is Mojang-mapped at runtime.
 dependencies {
     implementation(project(":core"))
+    // Compile against the Paper 1.21.11 server jar (CraftBukkit + NMS, Mojang-mapped)
+    // plus the committed runtime library jars in run/.
+    //
+    // The server jar contains ONLY the org.bukkit.craftbukkit implementation classes;
+    // the public API types it implements (org.bukkit.Location, Bukkit, Server, World,
+    // org.bukkit.entity.*) live in the paper-api jar. javac needs BOTH: without the API
+    // jar it fails with "package org.bukkit does not exist" / "class file for
+    // org.bukkit.Server not found". The jars do not overlap (verified: server jar has
+    // no top-level org.bukkit API classes, paper-api has no craftbukkit classes), so
+    // there is no duplicate-class conflict.
     compileOnly(files("../run/versions/1.21.11/paper-1.21.11.jar"))
-    // The Paper server jar already contains the full Bukkit/CraftBukkit API and seals
-    // org.bukkit. Exclude the duplicate paper-api jar so javac does not reject the
-    // sealed-package conflict. Library jars live in nested version directories, so the
-    // recursive `**` pattern is required here.
     compileOnly(fileTree("../run/libraries") {
         include("**/*.jar")
-        exclude("**/io/papermc/paper/paper-api/**")
     })
 }
 

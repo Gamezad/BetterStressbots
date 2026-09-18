@@ -2,6 +2,7 @@ package me.micahcode.betterStresstestbots.nms;
 
 import me.micahcode.betterStresstestbots.BotManager;
 import org.bukkit.Location;
+import org.bukkit.entity.Player;
 
 public interface IFakePlayer {
     void tick();
@@ -18,4 +19,10 @@ public interface IFakePlayer {
     boolean isOp();
     boolean isAlive();
     String getName();
+
+    /**
+     * The bot's Bukkit entity, used to schedule work on the thread/region that
+     * owns it (required for Folia). May be null if the bot failed to join.
+     */
+    Player getBukkitEntity();
 }

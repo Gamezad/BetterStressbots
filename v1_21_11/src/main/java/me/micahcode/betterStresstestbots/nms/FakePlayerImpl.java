@@ -1,16 +1,21 @@
 package me.micahcode.betterStresstestbots.nms;
 
+import ca.spottedleaf.concurrentutil.collection.MultiThreadedQueue;
 import com.mojang.authlib.GameProfile;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.util.ReferenceCounted;
+import io.papermc.paper.util.KeepAlive;
 import me.micahcode.betterStresstestbots.BotManager;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ServerboundKeepAlivePacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
+import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -18,6 +23,8 @@ import org.bukkit.Location;
 import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.craftbukkit.CraftWorld;
 
+import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
 import java.util.Random;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -30,6 +37,17 @@ public class FakePlayerImpl implements IFakePlayer {
     private double lastX, lastY, lastZ;
     private boolean op = true;
     private final Random random = new Random();
+
+    /** The embedded channel of the bot's fake connection (server→bot side). */
+    private final EmbeddedChannel channel;
+
+    /**
+     * The keep-alive challenge queue of the bot's connection
+     * (a {@code MultiThreadedQueue} of pending challenges, resolved once via
+     * reflection — the field is private; the class, queue and accessor APIs
+     * are all compile-checked). Null when it could not be resolved.
+     */
+    private MultiThreadedQueue<KeepAlive.PendingKeepAlive> keepAliveQueue;
 
     private double speed  = 0.1;
     private double radius = 500.0;
@@ -51,7 +69,13 @@ public class FakePlayerImpl implements IFakePlayer {
         nmsPlayer = new ServerPlayer(server, level, profile, ClientInformation.createDefault());
 
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
-        new EmbeddedChannel(connection);
+        channel = new EmbeddedChannel(connection);
+        // The vanilla disconnect path casts the connection's address to
+        // InetSocketAddress; the embedded channel's address is an
+        // EmbeddedSocketAddress, so without a fake remote address each bot
+        // removal logs a ClassCastException from Connection.handleDisconnection.
+        // (Public field; re-applied in remove() in case it is overwritten.)
+        connection.address = new InetSocketAddress("127.0.0.1", 51234);
 
         // v1_21_11: factory method cookie
         CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
@@ -64,6 +88,13 @@ public class FakePlayerImpl implements IFakePlayer {
             return;
         }
 
+        if (!resolveKeepAliveQueue()) {
+            // Without it the bot is kicked after ~30s (keep-alive timeout), so
+            // this must be visible in the console to diagnose layout changes.
+            logger.warning("Keep-alive queue could not be resolved for " + name
+                    + " — it will be kicked after ~30s unless the server keep-alive is disabled.");
+        }
+
         nmsPlayer.setGameMode(GameType.CREATIVE);
         nmsPlayer.setNoGravity(true);
         nmsPlayer.snapTo(spawnX, spawnY, spawnZ); nmsPlayer.setYRot(0f); nmsPlayer.setXRot(0f); // v1_21_11: snapTo
@@ -72,6 +103,69 @@ public class FakePlayerImpl implements IFakePlayer {
         lastY = nmsPlayer.getY();
         lastZ = nmsPlayer.getZ();
         pickNewTarget();
+    }
+
+    /**
+     * Resolves the keep-alive challenge queue of the bot's connection.
+     * Paper 1.21.11 holds it as the private
+     * {@code KeepAlive keepAlive} field of
+     * {@link ServerCommonPacketListenerImpl} (the {@code pendingKeepAlives}
+     * member of that holder). Only those two private fields need reflection —
+     * the classes, the queue type and the accessor methods are all
+     * compile-checked, so a layout change fails loudly at compile time.
+     */
+    /** @return true when the keep-alive queue was resolved. */
+    private boolean resolveKeepAliveQueue() {
+        if (nmsPlayer == null || nmsPlayer.connection == null) return false;
+        try {
+            Field kaField = ServerCommonPacketListenerImpl.class.getDeclaredField("keepAlive");
+            kaField.setAccessible(true);
+            KeepAlive keepAlive = (KeepAlive) kaField.get(nmsPlayer.connection);
+            if (keepAlive == null) return false;
+            Field queueField = KeepAlive.class.getDeclaredField("pendingKeepAlives");
+            queueField.setAccessible(true);
+            keepAliveQueue = (MultiThreadedQueue<KeepAlive.PendingKeepAlive>) queueField.get(keepAlive);
+            return keepAliveQueue != null;
+        } catch (Throwable t) {
+            keepAliveQueue = null;
+            return false;
+        }
+    }
+
+    /**
+     * Answers the server's keep-alive challenge so the bot is not kicked with
+     * "was kicked due to keepalive timeout". The embedded connection never
+     * performs a network round-trip, so the pending challenge is peeked and
+     * acknowledged through the listener's own public packet handler — exactly
+     * what a decoded {@link ServerboundKeepAlivePacket} would do. Runs on the
+     * bot's region thread, the same thread that owns its connection.
+     */
+    private void acknowledgeKeepAlive() {
+        if (keepAliveQueue == null || nmsPlayer == null || nmsPlayer.connection == null) return;
+        try {
+            KeepAlive.PendingKeepAlive pending = keepAliveQueue.peek();
+            if (pending == null) return;
+            nmsPlayer.connection.handleKeepAlive(new ServerboundKeepAlivePacket(pending.challengeId()));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Discards server→bot packets (chat broadcasts, block updates, the keep
+     * alive challenge itself, ...) that accumulate in the embedded channel's
+     * outbound buffer. Nothing reads them, so without draining they grow
+     * without bound on long stress-test runs.
+     */
+    private void drainOutboundPackets() {
+        try {
+            Object msg;
+            while ((msg = channel.readOutbound()) != null) {
+                if (msg instanceof ReferenceCounted rc) {
+                    rc.release();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     private void pickNewTarget() {
@@ -91,6 +185,9 @@ public class FakePlayerImpl implements IFakePlayer {
     @Override
     public void tick() {
         if (nmsPlayer == null || !nmsPlayer.isAlive()) return;
+
+        acknowledgeKeepAlive();
+        drainOutboundPackets();
 
         // Detect an external teleport (e.g. another plugin ran /rtp on this bot).
         double jumpX = nmsPlayer.getX() - lastX;
@@ -192,8 +289,12 @@ public class FakePlayerImpl implements IFakePlayer {
     @Override
     public void remove() {
         try {
-            if (nmsPlayer != null && nmsPlayer.connection != null)
+            if (nmsPlayer != null && nmsPlayer.connection != null) {
+                // Re-apply the fake address in case the server overwrote it
+                // after join (keeps the disconnect log clean).
+                nmsPlayer.connection.address = new InetSocketAddress("127.0.0.1", 51234);
                 nmsPlayer.connection.disconnect(Component.literal("Stress bot removed"));
+            }
         } catch (Exception ignored) {}
     }
 
@@ -236,5 +337,10 @@ public class FakePlayerImpl implements IFakePlayer {
     @Override
     public String getName() {
         return nmsPlayer != null ? nmsPlayer.getGameProfile().name() : "unknown"; // v1_21_11: name()
+    }
+
+    @Override
+    public org.bukkit.entity.Player getBukkitEntity() {
+        return nmsPlayer != null ? (org.bukkit.entity.Player) nmsPlayer.getBukkitEntity() : null;
     }
 }
