@@ -75,7 +75,10 @@ final class ThreadedRegions {
      */
     static ScheduledTask startRegionLoop(Plugin plugin, Location anchor, long periodTicks,
                                          Consumer<ScheduledTask> step) {
-        return Bukkit.getRegionScheduler().runAtFixedRate(plugin, anchor, step, 0L, periodTicks);
+        // Folia's region scheduler rejects an initial delay <= 0 (regular Paper
+        // accepts it), so the loop starts one tick late — imperceptible, and it
+        // works on both runtimes.
+        return Bukkit.getRegionScheduler().runAtFixedRate(plugin, anchor, step, 1L, periodTicks);
     }
 
     /**
